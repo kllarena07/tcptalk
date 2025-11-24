@@ -2,7 +2,8 @@ use crossterm::event::KeyCode;
 use ratatui::{
     DefaultTerminal, Frame,
     layout::{Constraint, Layout},
-    style::{Color, Stylize},
+    style::{Color, Style, Stylize},
+    text::{Line, Span},
     widgets::Block,
 };
 use std::{io, sync::mpsc, thread, time::Duration};
@@ -77,10 +78,38 @@ impl App {
     }
 
     fn draw(&mut self, frame: &mut Frame) {
-        let [vertical_area] = Layout::horizontal([Constraint::Fill(1)]).areas(frame.area());
-        let [horizontal_area] = Layout::horizontal([Constraint::Fill(1)]).areas(vertical_area);
+        const BG_PRIMARY: Color = Color::Rgb(10, 10, 10);
+        const BG_SECONDARY: Color = Color::Rgb(20, 20, 20);
+        const BG_SUCCESS: Color = Color::Rgb(30, 30, 30);
+        const TEXT_PRIMARY: Color = Color::Rgb(255, 255, 255);
+        const TEXT_SECONDARY: Color = Color::Rgb(128, 128, 128);
 
-        frame.render_widget(Block::new().bg(Color::Rgb(30, 30, 30)), horizontal_area);
+        let [horizontal_area] = Layout::horizontal([Constraint::Fill(1)]).areas(frame.area());
+        let [main_area, info_area] =
+            Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).areas(horizontal_area);
+
+        let version_control = Line::from(Span::styled(
+            " tailtalk v1.0.0 ",
+            Style::default().fg(TEXT_PRIMARY),
+        ))
+        .centered()
+        .bg(BG_SUCCESS);
+
+        let conn_addr = "0.0.0.0";
+        let conn_msg = format!(" Connected to {} ", conn_addr);
+
+        let conn_info = Line::from(Span::styled(conn_msg, Style::default().fg(TEXT_SECONDARY)))
+            .bg(BG_SECONDARY);
+
+        let [vc_area, conn_area] = Layout::horizontal([
+            Constraint::Length((version_control.width() as u16)),
+            Constraint::Fill(1),
+        ])
+        .areas(info_area);
+
+        frame.render_widget(Block::new().bg(BG_PRIMARY), main_area);
+        frame.render_widget(version_control, vc_area);
+        frame.render_widget(conn_info, conn_area);
     }
 
     fn handle_key_event(&mut self, key_event: crossterm::event::KeyEvent) -> io::Result<()> {
