@@ -48,18 +48,16 @@ fn get_username(mut stream: &TcpStream) -> io::Result<String> {
     loop {
         stream.write_all(b"Enter your username: ")?;
         stream.flush()?;
-        
+
         let mut buf = [0u8; 32];
         let n = stream.read(&mut buf)?;
-        
-        let username = String::from_utf8_lossy(&buf[..n])
-            .trim()
-            .to_string();
-        
+
+        let username = String::from_utf8_lossy(&buf[..n]).trim().to_string();
+
         if !username.is_empty() {
             return Ok(username);
         }
-        
+
         stream.write_all(b"Username cannot be empty. Please try again.\n")?;
         stream.flush()?;
     }
@@ -72,12 +70,15 @@ fn handle_client(
     let addr = stream.peer_addr()?;
 
     let username = get_username(&stream)?;
-    
+
     let mut conn_map = connections.lock().unwrap();
-    conn_map.insert(addr, Client {
-        stream: stream.try_clone()?,
-        username: username.clone(),
-    });
+    conn_map.insert(
+        addr,
+        Client {
+            stream: stream.try_clone()?,
+            username: username.clone(),
+        },
+    );
     let total = conn_map.len();
     drop(conn_map);
     println!("{} connected from {} (Total: {})", username, addr, total);
@@ -94,7 +95,7 @@ fn handle_client(
 
         let message = String::from_utf8_lossy(&buf[..n]);
         let formatted_msg = format!("{}: {}", username, message);
-        
+
         std::io::stdout().write_all(formatted_msg.as_bytes())?;
         std::io::stdout().flush()?;
 
@@ -119,8 +120,7 @@ fn main() -> io::Result<()> {
     println!("Binding to port {}", address);
 
     let listener = TcpListener::bind(address)?;
-    let connections: Arc<Mutex<HashMap<SocketAddr, Client>>> =
-        Arc::new(Mutex::new(HashMap::new()));
+    let connections: Arc<Mutex<HashMap<SocketAddr, Client>>> = Arc::new(Mutex::new(HashMap::new()));
 
     for connection in listener.incoming() {
         match connection {
