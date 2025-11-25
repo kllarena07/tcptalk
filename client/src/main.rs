@@ -78,7 +78,7 @@ impl App {
     }
 
     fn draw(&mut self, frame: &mut Frame) {
-        const BG_PRIMARY: Color = Color::Rgb(31, 33, 36);
+        const BG_PRIMARY: Color = Color::Rgb(0, 0, 0);
         const BG_SECONDARY: Color = Color::Rgb(30, 30, 30);
         const BG_SUCCESS: Color = Color::Rgb(89, 87, 86);
         const TEXT_PRIMARY: Color = Color::Rgb(255, 255, 255);
