@@ -3,8 +3,8 @@ use ratatui::{
     DefaultTerminal, Frame,
     layout::{Constraint, Layout},
     style::{Color, Style, Stylize},
-    text::{Line, Span},
-    widgets::Block,
+    text::{Line, Span, Text},
+    widgets::{Block, BorderType, Borders, Padding, Paragraph, Wrap},
 };
 use std::{io, sync::mpsc, thread, time::Duration};
 
@@ -88,6 +88,12 @@ impl App {
         let [main_area, info_area] =
             Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).areas(horizontal_area);
 
+        let [content_area, input_parent] =
+            Layout::vertical([Constraint::Fill(1), Constraint::Length(5)]).areas(main_area);
+
+        let [input_area_1, input_area_2] =
+            Layout::vertical([Constraint::Length(2), Constraint::Length(3)]).areas(input_parent);
+
         let version_control = Line::from(Span::styled(
             " tailtalk v0.0.1 ",
             Style::default().fg(TEXT_PRIMARY),
@@ -107,7 +113,36 @@ impl App {
         ])
         .areas(info_area);
 
+        let input_paragraph = Paragraph::new(Text::from("hello"))
+            .block(
+                Block::new()
+                    .borders(Borders::LEFT)
+                    .border_type(BorderType::Thick)
+                    .padding(Padding {
+                        left: 1,
+                        right: 0,
+                        top: 0,
+                        bottom: 0,
+                    }),
+            )
+            .wrap(Wrap { trim: true });
+
+        let input_info = Paragraph::new(vec![
+            Line::from(""),
+            Line::from(Span::from("Sending message as krayon").style(Style::default().bold())),
+            Line::from(""),
+        ])
+        .block(Block::new().padding(Padding {
+            left: 1,
+            right: 0,
+            top: 0,
+            bottom: 0,
+        }));
+
         frame.render_widget(Block::new().bg(BG_PRIMARY), main_area);
+        frame.render_widget(Block::new().borders(Borders::ALL), content_area);
+        frame.render_widget(input_paragraph, input_area_1);
+        frame.render_widget(input_info, input_area_2);
         frame.render_widget(version_control, vc_area);
         frame.render_widget(conn_info, conn_area);
     }
