@@ -1,19 +1,36 @@
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, MouseEvent, MouseEventKind};
 use ratatui::{
     DefaultTerminal, Frame,
     layout::{Constraint, Layout, Rect},
     style::{Color, Style, Stylize},
     text::{Line, Span},
-    widgets::{Block, BorderType, Borders, Padding, Paragraph, Wrap},
+    widgets::{Block, BorderType, Borders, Cell, Padding, Paragraph, Row, Table, TableState, Wrap},
 };
 use std::{io, sync::mpsc, thread, time::Duration};
 
 fn main() -> io::Result<()> {
+    crossterm::execute!(std::io::stdout(), crossterm::event::EnableMouseCapture)?;
+
     let mut app = App {
         running: true,
         input_text: String::new(),
         cursor_visible: true,
         last_input_time: std::time::Instant::now(),
+        messages: (0..100)
+            .flat_map(|i| {
+                vec![
+                    Message {
+                        author: "krayon".to_string(),
+                        content: format!("Message {}", i + 1),
+                    },
+                    Message {
+                        author: "".to_string(),
+                        content: "".to_string(),
+                    },
+                ]
+            })
+            .collect(),
+        message_state: TableState::default().with_selected(0),
     };
 
     let mut terminal = ratatui::init();
@@ -30,14 +47,16 @@ fn main() -> io::Result<()> {
         run_cursor_blink_thread(tx_to_cursor_events);
     });
 
-    let app_result = app.run(&mut terminal, event_rx);
+    let app_result = app.run(&mut terminal, event_rx, event_tx.clone());
 
     ratatui::restore();
+    crossterm::execute!(std::io::stdout(), crossterm::event::DisableMouseCapture)?;
     app_result
 }
 
 enum Event {
     Input(crossterm::event::KeyEvent),
+    Mouse(crossterm::event::MouseEvent),
     CursorBlink,
 }
 
@@ -45,6 +64,9 @@ fn handle_input_events(tx: mpsc::Sender<Event>) {
     loop {
         match crossterm::event::read().unwrap() {
             crossterm::event::Event::Key(key_event) => tx.send(Event::Input(key_event)).unwrap(),
+            crossterm::event::Event::Mouse(mouse_event) => {
+                tx.send(Event::Mouse(mouse_event)).unwrap()
+            }
             _ => {}
         }
     }
@@ -58,18 +80,54 @@ fn run_cursor_blink_thread(tx: mpsc::Sender<Event>) {
     }
 }
 
+struct Message {
+    author: String,
+    content: String,
+}
+
 struct App {
     running: bool,
     input_text: String,
     cursor_visible: bool,
     last_input_time: std::time::Instant,
+    messages: Vec<Message>,
+    message_state: TableState,
 }
 
 impl App {
-    fn run(&mut self, terminal: &mut DefaultTerminal, rx: mpsc::Receiver<Event>) -> io::Result<()> {
+    fn next_message(&mut self) {
+        let i = match self.message_state.selected() {
+            Some(i) => {
+                if i >= self.messages.len() - 1 {
+                    self.messages.len() - 1
+                } else {
+                    i + 1
+                }
+            }
+            None => 0,
+        };
+        self.message_state.select(Some(i));
+    }
+
+    fn previous_message(&mut self) {
+        let i = match self.message_state.selected() {
+            Some(i) => {
+                if i == 0 {
+                    0
+                } else {
+                    i - 1
+                }
+            }
+            None => 0,
+        };
+        self.message_state.select(Some(i));
+    }
+
+    fn run(&mut self, terminal: &mut DefaultTerminal, rx: mpsc::Receiver<Event>, _tx: mpsc::Sender<Event>) -> io::Result<()> {
         while self.running {
             match rx.recv().unwrap() {
                 Event::Input(key_event) => self.handle_key_event(key_event)?,
+                Event::Mouse(mouse_event) => self.handle_mouse_event(mouse_event)?,
                 Event::CursorBlink => {
                     // Only blink cursor if user hasn't typed in the last 1 second
                     if self.last_input_time.elapsed().as_secs() >= 1 {
@@ -170,33 +228,37 @@ impl App {
             bottom: 0,
         }));
 
-        let message_1 = Paragraph::new(vec![
-            Line::from(vec![
-                Span::styled("krayon: ", Style::default().bold()),
-                Span::from("hello world"),
-            ]),
-            Line::from(""),
-            Line::from(vec![
-                Span::styled("krayon: ", Style::default().bold()),
-                Span::from("hello world"),
-            ]),
-        ])
-        .block(Block::new().padding(Padding {
-            left: 1,
-            right: 1,
-            top: 1,
-            bottom: 1,
-        }));
+        let message_rows = self.messages.iter().map(|message| {
+            let formatted_message = if !message.author.is_empty() {
+                format!("{}: ", message.author)
+            } else {
+                String::new()
+            };
+
+            Row::new(vec![Cell::from(Line::from(vec![
+                Span::styled(formatted_message, Style::default().bold()),
+                Span::from(message.content.clone()),
+            ]))])
+        });
+
+        let messages_table =
+            Table::new(message_rows, [Constraint::Fill(1)]).block(Block::new().padding(Padding {
+                left: 1,
+                right: 1,
+                top: 1,
+                bottom: 1,
+            }));
 
         frame.render_widget(Block::new().bg(BG_PRIMARY), main_area);
-        frame.render_widget(
-            message_1,
+        frame.render_stateful_widget(
+            messages_table,
             Rect {
                 x: content_area.x,
                 y: content_area.y,
                 width: content_area.width,
                 height: content_area.height,
             },
+            &mut self.message_state,
         );
         frame.render_widget(
             input_paragraph,
@@ -210,6 +272,19 @@ impl App {
         frame.render_widget(input_info, input_area_2);
         frame.render_widget(version_control, vc_area);
         frame.render_widget(conn_info, conn_area);
+    }
+
+    fn handle_mouse_event(&mut self, mouse_event: MouseEvent) -> io::Result<()> {
+        match mouse_event.kind {
+            MouseEventKind::ScrollDown => {
+                self.next_message();
+            }
+            MouseEventKind::ScrollUp => {
+                self.previous_message();
+            }
+            _ => {}
+        }
+        Ok(())
     }
 
     fn handle_key_event(&mut self, key_event: crossterm::event::KeyEvent) -> io::Result<()> {
