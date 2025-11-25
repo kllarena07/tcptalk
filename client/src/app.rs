@@ -1,4 +1,4 @@
-use crossterm::event::{KeyCode, MouseEvent, MouseEventKind};
+use crossterm::event::{KeyCode, KeyModifiers, MouseEvent, MouseEventKind};
 use ratatui::{
     DefaultTerminal, Frame,
     layout::{Constraint, Layout, Rect},
@@ -388,8 +388,6 @@ impl App {
     }
 
     fn handle_key_event(&mut self, key_event: crossterm::event::KeyEvent) -> io::Result<()> {
-        use crossterm::event::KeyModifiers;
-
         match key_event.code {
             KeyCode::Char(c) => {
                 // Handle Ctrl+C for quit
