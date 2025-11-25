@@ -9,7 +9,12 @@ use ratatui::{
 use std::{io, sync::mpsc, thread, time::Duration};
 
 fn main() -> io::Result<()> {
-    let mut app = App { running: true };
+    let mut app = App { 
+        running: true,
+        input_text: String::new(),
+        cursor_visible: true,
+        last_input_time: std::time::Instant::now(),
+    };
 
     let mut terminal = ratatui::init();
 
@@ -20,9 +25,9 @@ fn main() -> io::Result<()> {
         handle_input_events(tx_to_input_events);
     });
 
-    let tx_to_counter_events = event_tx.clone();
+    let tx_to_cursor_events = event_tx.clone();
     thread::spawn(move || {
-        run_tick_thread(tx_to_counter_events, 30);
+        run_cursor_blink_thread(tx_to_cursor_events);
     });
 
     let app_result = app.run(&mut terminal, event_rx);
@@ -33,7 +38,7 @@ fn main() -> io::Result<()> {
 
 enum Event {
     Input(crossterm::event::KeyEvent),
-    Tick(u64),
+    CursorBlink,
 }
 
 fn handle_input_events(tx: mpsc::Sender<Event>) {
@@ -45,18 +50,19 @@ fn handle_input_events(tx: mpsc::Sender<Event>) {
     }
 }
 
-fn run_tick_thread(tx: mpsc::Sender<Event>, fps: u64) {
-    let frame_duration = Duration::from_millis(1000 / fps);
-    let mut tick: u64 = 0;
+fn run_cursor_blink_thread(tx: mpsc::Sender<Event>) {
+    let blink_duration = Duration::from_millis(500);
     loop {
-        tx.send(Event::Tick(tick)).unwrap();
-        tick = tick.wrapping_add(1);
-        thread::sleep(frame_duration);
+        tx.send(Event::CursorBlink).unwrap();
+        thread::sleep(blink_duration);
     }
 }
 
 struct App {
     running: bool,
+    input_text: String,
+    cursor_visible: bool,
+    last_input_time: std::time::Instant,
 }
 
 impl App {
@@ -64,10 +70,14 @@ impl App {
         while self.running {
             match rx.recv().unwrap() {
                 Event::Input(key_event) => self.handle_key_event(key_event)?,
-                Event::Tick(tick) => {
-                    // if let Some(page) = self.pages.get_mut(self.selected_page) {
-                    //     let _ = page.on_tick(tick);
-                    // }
+                Event::CursorBlink => {
+                    // Only blink cursor if user hasn't typed in the last 1 second
+                    if self.last_input_time.elapsed().as_secs() >= 1 {
+                        self.cursor_visible = !self.cursor_visible;
+                    } else {
+                        // Keep cursor visible when typing
+                        self.cursor_visible = true;
+                    }
                 }
             }
 
@@ -113,20 +123,26 @@ impl App {
         ])
         .areas(info_area);
 
-        let input_paragraph =
-            Paragraph::new(vec![Line::from(""), Line::from("hello"), Line::from("")])
-                .block(
-                    Block::new()
-                        .borders(Borders::LEFT)
-                        .border_type(BorderType::Thick)
-                        .padding(Padding {
-                            left: 1,
-                            right: 0,
-                            top: 0,
-                            bottom: 0,
-                        }),
-                )
-                .wrap(Wrap { trim: true });
+        let cursor_char = if self.cursor_visible { "█" } else { " " };
+        let input_with_cursor = format!("{}{}", self.input_text, cursor_char);
+        
+        let input_paragraph = Paragraph::new(vec![
+            Line::from(""),
+            Line::from(Span::styled(input_with_cursor, Style::default().fg(TEXT_PRIMARY))),
+            Line::from(""),
+        ])
+            .block(
+                Block::new()
+                    .borders(Borders::LEFT)
+                    .border_type(BorderType::Thick)
+                    .padding(Padding {
+                        left: 1,
+                        right: 0,
+                        top: 0,
+                        bottom: 0,
+                    }),
+            )
+            .wrap(Wrap { trim: true });
 
         let input_info = Paragraph::new(vec![
             Line::from(""),
@@ -186,6 +202,14 @@ impl App {
         match key_event.code {
             KeyCode::Char('q') => {
                 self.running = false;
+            }
+            KeyCode::Char(c) => {
+                self.input_text.push(c);
+                self.last_input_time = std::time::Instant::now();
+            }
+            KeyCode::Backspace => {
+                self.input_text.pop();
+                self.last_input_time = std::time::Instant::now();
             }
             _ => {}
         }
