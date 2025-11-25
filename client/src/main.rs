@@ -9,7 +9,7 @@ use ratatui::{
 use std::{io, sync::mpsc, thread, time::Duration};
 
 fn main() -> io::Result<()> {
-    let mut app = App { 
+    let mut app = App {
         running: true,
         input_text: String::new(),
         cursor_visible: true,
@@ -98,11 +98,22 @@ impl App {
         let [main_area, info_area] =
             Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).areas(horizontal_area);
 
+        let cursor_char = if self.cursor_visible { "█" } else { " " };
+        let input_with_cursor = format!("{}{}", self.input_text, cursor_char);
+
+        // Estimate lines needed (account for padding and borders)
+        let available_width = main_area.width.saturating_sub(4);
+        let text_width = input_with_cursor.len() as u16;
+        let lines_needed = std::cmp::max(1, (text_width + available_width - 1) / available_width);
+        let input_area_height = std::cmp::max(3, lines_needed); // Minimum 3 lines for input area
+        let total_input_height = input_area_height + 3; // Input area + info area
+        
         let [content_area, input_parent] =
-            Layout::vertical([Constraint::Fill(1), Constraint::Length(6)]).areas(main_area);
+            Layout::vertical([Constraint::Fill(1), Constraint::Length(total_input_height)]).areas(main_area);
 
         let [input_area_1, input_area_2] =
-            Layout::vertical([Constraint::Length(3), Constraint::Length(3)]).areas(input_parent);
+            Layout::vertical([Constraint::Length(input_area_height), Constraint::Length(3)])
+                .areas(input_parent);
 
         let version_control = Line::from(Span::styled(
             " tailtalk v0.0.1 ",
@@ -123,26 +134,28 @@ impl App {
         ])
         .areas(info_area);
 
-        let cursor_char = if self.cursor_visible { "█" } else { " " };
-        let input_with_cursor = format!("{}{}", self.input_text, cursor_char);
-        
-        let input_paragraph = Paragraph::new(vec![
-            Line::from(""),
-            Line::from(Span::styled(input_with_cursor, Style::default().fg(TEXT_PRIMARY))),
-            Line::from(""),
-        ])
-            .block(
-                Block::new()
-                    .borders(Borders::LEFT)
-                    .border_type(BorderType::Thick)
-                    .padding(Padding {
-                        left: 1,
-                        right: 0,
-                        top: 0,
-                        bottom: 0,
-                    }),
-            )
-            .wrap(Wrap { trim: true });
+        let display_text = if input_with_cursor.trim().is_empty() {
+            " ".to_string()
+        } else {
+            input_with_cursor
+        };
+
+        let input_paragraph = Paragraph::new(vec![Line::from(Span::styled(
+            display_text,
+            Style::default().fg(TEXT_PRIMARY),
+        ))])
+        .block(
+            Block::new()
+                .borders(Borders::LEFT)
+                .border_type(BorderType::Thick)
+                .padding(Padding {
+                    left: 1,
+                    right: 0,
+                    top: 0,
+                    bottom: 0,
+                }),
+        )
+        .wrap(Wrap { trim: true });
 
         let input_info = Paragraph::new(vec![
             Line::from(""),
@@ -184,23 +197,15 @@ impl App {
                 height: content_area.height - 1,
             },
         );
-        frame.render_widget(
-            input_paragraph,
-            Rect {
-                x: input_area_1.x + 1,
-                y: input_area_1.y,
-                width: input_area_1.width,
-                height: input_area_1.height,
-            },
-        );
+        frame.render_widget(input_paragraph, input_area_1);
         frame.render_widget(input_info, input_area_2);
         frame.render_widget(version_control, vc_area);
         frame.render_widget(conn_info, conn_area);
     }
 
     fn handle_key_event(&mut self, key_event: crossterm::event::KeyEvent) -> io::Result<()> {
-        use crossterm::event::{KeyModifiers};
-        
+        use crossterm::event::KeyModifiers;
+
         match key_event.code {
             KeyCode::Char('q') => {
                 self.running = false;
@@ -215,8 +220,9 @@ impl App {
             }
             KeyCode::Delete => {
                 // Handle Alt/Meta + Delete (platform dependent)
-                if key_event.modifiers.contains(KeyModifiers::ALT) || 
-                   key_event.modifiers.contains(KeyModifiers::META) {
+                if key_event.modifiers.contains(KeyModifiers::ALT)
+                    || key_event.modifiers.contains(KeyModifiers::META)
+                {
                     // Delete word logic - find previous space and delete from there
                     if let Some(last_space_pos) = self.input_text.rfind(' ') {
                         self.input_text.truncate(last_space_pos);
