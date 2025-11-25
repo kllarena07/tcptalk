@@ -31,6 +31,7 @@ fn main() -> io::Result<()> {
             })
             .collect(),
         message_state: TableState::default().with_selected(0),
+        cursor_position: 0,
     };
 
     let mut terminal = ratatui::init();
@@ -88,6 +89,7 @@ struct Message {
 struct App {
     running: bool,
     input_text: String,
+    cursor_position: usize,
     cursor_visible: bool,
     last_input_time: std::time::Instant,
     messages: Vec<Message>,
@@ -123,6 +125,63 @@ impl App {
         self.message_state.select(Some(i));
     }
 
+    fn move_cursor_left(&mut self) {
+        if self.cursor_position > 0 {
+            self.cursor_position -= 1;
+        }
+    }
+
+    fn move_cursor_right(&mut self) {
+        if self.cursor_position < self.input_text.len() {
+            self.cursor_position += 1;
+        }
+    }
+
+    fn move_cursor_to_start(&mut self) {
+        self.cursor_position = 0;
+    }
+
+    fn move_cursor_to_end(&mut self) {
+        self.cursor_position = self.input_text.len();
+    }
+
+    fn move_cursor_word_left(&mut self) {
+        if self.cursor_position == 0 {
+            return;
+        }
+        
+        // Find the start of the previous word, treating punctuation as boundaries
+        let text_before_cursor = &self.input_text[..self.cursor_position];
+        let trimmed = text_before_cursor.trim_end_matches(|c: char| c.is_whitespace() || c == '\'' || c == '"' || c == ';' || c == ',' || c == '.' || c == '!' || c == '?');
+        
+        if let Some(last_boundary_pos) = trimmed.rfind(|c: char| c.is_whitespace() || c == '\'' || c == '"' || c == ';' || c == ',' || c == '.' || c == '!' || c == '?') {
+            self.cursor_position = last_boundary_pos + 1;
+        } else {
+            self.cursor_position = 0;
+        }
+    }
+
+    fn move_cursor_word_right(&mut self) {
+        if self.cursor_position >= self.input_text.len() {
+            return;
+        }
+        
+        // Find the start of the next word, treating punctuation as boundaries
+        let text_after_cursor = &self.input_text[self.cursor_position..];
+        if let Some(next_boundary_pos) = text_after_cursor.find(|c: char| c.is_whitespace() || c == '\'' || c == '"' || c == ';' || c == ',' || c == '.' || c == '!' || c == '?') {
+            let new_pos = self.cursor_position + next_boundary_pos;
+            // Skip any boundaries to get to the next word
+            let remaining = &self.input_text[new_pos..];
+            if let Some(non_boundary_pos) = remaining.find(|c: char| !(c.is_whitespace() || c == '\'' || c == '"' || c == ';' || c == ',' || c == '.' || c == '!' || c == '?')) {
+                self.cursor_position = new_pos + non_boundary_pos;
+            } else {
+                self.cursor_position = self.input_text.len();
+            }
+        } else {
+            self.cursor_position = self.input_text.len();
+        }
+    }
+
     fn run(&mut self, terminal: &mut DefaultTerminal, rx: mpsc::Receiver<Event>, _tx: mpsc::Sender<Event>) -> io::Result<()> {
         while self.running {
             match rx.recv().unwrap() {
@@ -156,12 +215,33 @@ impl App {
         let [main_area, info_area] =
             Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).areas(horizontal_area);
 
-        let cursor_char = if self.cursor_visible { "█" } else { " " };
-        let input_with_cursor = format!("{}{}", self.input_text, cursor_char);
+        let before_cursor = &self.input_text[..self.cursor_position];
+        
+        // Create styled spans for cursor with different color
+        let mut input_spans = vec![
+            Span::from(before_cursor.to_string()),
+        ];
+        
+        // Add cursor - replace the character at cursor position if there is one
+        if self.cursor_position < self.input_text.len() {
+            // Replace the character at cursor position with cursor
+            let char_at_cursor = &self.input_text[self.cursor_position..self.cursor_position + 1];
+            if self.cursor_visible {
+                input_spans.push(Span::styled(char_at_cursor, Style::default().fg(Color::Cyan).bg(Color::Rgb(0, 100, 100))));
+            } else {
+                input_spans.push(Span::from(char_at_cursor));
+            }
+            input_spans.push(Span::from(&self.input_text[self.cursor_position + 1..]));
+        } else {
+            // Cursor at end of line
+            if self.cursor_visible {
+                input_spans.push(Span::styled("█", Style::default().fg(Color::Cyan)));
+            }
+        }
 
         // Estimate lines needed (account for padding and borders)
         let available_width = main_area.width.saturating_sub(4);
-        let text_width = input_with_cursor.len() as u16;
+        let text_width = self.input_text.len() as u16 + 1; // +1 for cursor
         let lines_needed = std::cmp::max(1, (text_width + available_width - 1) / available_width);
         let input_area_height = std::cmp::max(3, lines_needed); // Minimum 3 lines for input area
         let total_input_height = input_area_height + 3; // Input area + info area
@@ -193,16 +273,7 @@ impl App {
         ])
         .areas(info_area);
 
-        let display_text = if input_with_cursor.trim().is_empty() {
-            " ".to_string()
-        } else {
-            input_with_cursor
-        };
-
-        let input_paragraph = Paragraph::new(vec![Line::from(Span::styled(
-            display_text,
-            Style::default().fg(TEXT_PRIMARY),
-        ))])
+        let input_paragraph = Paragraph::new(vec![Line::from(input_spans)])
         .block(
             Block::new()
                 .borders(Borders::LEFT)
@@ -297,30 +368,80 @@ impl App {
             KeyCode::Char(c) => {
                 // Handle Ctrl+U for clear line (Win+Delete in your case)
                 if c == 'u' && key_event.modifiers.contains(KeyModifiers::CONTROL) {
-                    self.input_text.clear();
-                } else {
-                    self.input_text.push(c);
+                    // Delete everything before cursor
+                    self.input_text.drain(0..self.cursor_position);
+                    self.cursor_position = 0;
+                }
+                // Handle Ctrl+Left (a) and Ctrl+Right (e) for line navigation
+                else if c == 'a' && key_event.modifiers.contains(KeyModifiers::CONTROL) {
+                    self.move_cursor_to_start();
+                }
+                else if c == 'e' && key_event.modifiers.contains(KeyModifiers::CONTROL) {
+                    self.move_cursor_to_end();
+                }
+                // Handle Alt+Left (f) and Alt+Right (b) for word navigation
+                else if c == 'f' && key_event.modifiers.contains(KeyModifiers::ALT) {
+                    self.move_cursor_word_right();
+                }
+                else if c == 'b' && key_event.modifiers.contains(KeyModifiers::ALT) {
+                    self.move_cursor_word_left();
+                }
+                else {
+                    self.input_text.insert(self.cursor_position, c);
+                    self.cursor_position += 1;
                 }
                 self.last_input_time = std::time::Instant::now();
             }
             KeyCode::Backspace => {
                 // Handle Alt+Backspace for delete word
                 if key_event.modifiers.contains(KeyModifiers::ALT) {
-                    // Delete word logic - find previous space and delete from there
-                    if let Some(last_space_pos) = self.input_text.rfind(' ') {
-                        self.input_text.truncate(last_space_pos);
-                    } else {
-                        self.input_text.clear();
+                    // Delete word logic - find previous boundary and delete from there
+                    if self.cursor_position > 0 {
+                        let text_before_cursor = &self.input_text[..self.cursor_position];
+                        let trimmed = text_before_cursor.trim_end_matches(|c: char| c.is_whitespace() || c == '\'' || c == '"' || c == ';' || c == ',' || c == '.' || c == '!' || c == '?');
+                        
+                        if let Some(last_boundary_pos) = trimmed.rfind(|c: char| c.is_whitespace() || c == '\'' || c == '"' || c == ';' || c == ',' || c == '.' || c == '!' || c == '?') {
+                            self.input_text.drain(last_boundary_pos + 1..self.cursor_position);
+                            self.cursor_position = last_boundary_pos + 1;
+                        } else {
+                            self.input_text.drain(0..self.cursor_position);
+                            self.cursor_position = 0;
+                        }
                     }
                 } else {
                     // Regular backspace - delete previous character
-                    self.input_text.pop();
+                    if self.cursor_position > 0 {
+                        self.input_text.remove(self.cursor_position - 1);
+                        self.cursor_position -= 1;
+                    }
                 }
                 self.last_input_time = std::time::Instant::now();
             }
             KeyCode::Delete => {
-                // Regular delete - remove next character (simplified for end of string)
-                // Since cursor is at end, this does nothing
+                // Delete character at cursor position
+                if self.cursor_position < self.input_text.len() {
+                    self.input_text.remove(self.cursor_position);
+                }
+                self.last_input_time = std::time::Instant::now();
+            }
+            KeyCode::Left => {
+                if key_event.modifiers.contains(KeyModifiers::ALT) {
+                    self.move_cursor_word_left();
+                } else if key_event.modifiers.contains(KeyModifiers::CONTROL) {
+                    self.move_cursor_to_start();
+                } else {
+                    self.move_cursor_left();
+                }
+                self.last_input_time = std::time::Instant::now();
+            }
+            KeyCode::Right => {
+                if key_event.modifiers.contains(KeyModifiers::ALT) {
+                    self.move_cursor_word_right();
+                } else if key_event.modifiers.contains(KeyModifiers::CONTROL) {
+                    self.move_cursor_to_end();
+                } else {
+                    self.move_cursor_right();
+                }
                 self.last_input_time = std::time::Instant::now();
             }
             _ => {}
