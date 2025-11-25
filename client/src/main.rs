@@ -89,7 +89,7 @@ impl App {
             Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).areas(horizontal_area);
 
         let version_control = Line::from(Span::styled(
-            " tailtalk v1.0.0 ",
+            " tailtalk v0.0.1 ",
             Style::default().fg(TEXT_PRIMARY),
         ))
         .centered()
