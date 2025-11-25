@@ -199,6 +199,8 @@ impl App {
     }
 
     fn handle_key_event(&mut self, key_event: crossterm::event::KeyEvent) -> io::Result<()> {
+        use crossterm::event::{KeyModifiers};
+        
         match key_event.code {
             KeyCode::Char('q') => {
                 self.running = false;
@@ -209,6 +211,22 @@ impl App {
             }
             KeyCode::Backspace => {
                 self.input_text.pop();
+                self.last_input_time = std::time::Instant::now();
+            }
+            KeyCode::Delete => {
+                // Handle Alt/Meta + Delete (platform dependent)
+                if key_event.modifiers.contains(KeyModifiers::ALT) || 
+                   key_event.modifiers.contains(KeyModifiers::META) {
+                    // Delete word logic - find previous space and delete from there
+                    if let Some(last_space_pos) = self.input_text.rfind(' ') {
+                        self.input_text.truncate(last_space_pos);
+                    } else {
+                        self.input_text.clear();
+                    }
+                } else {
+                    // Regular delete - remove next character (simplified for end of string)
+                    // Since cursor is at end, this does nothing
+                }
                 self.last_input_time = std::time::Instant::now();
             }
             _ => {}
