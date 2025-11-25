@@ -102,7 +102,7 @@ impl App {
             .bg(BG_SECONDARY);
 
         let [vc_area, conn_area] = Layout::horizontal([
-            Constraint::Length((version_control.width() as u16)),
+            Constraint::Length(version_control.width() as u16),
             Constraint::Fill(1),
         ])
         .areas(info_area);
