@@ -195,7 +195,7 @@ impl App {
                 x: content_area.x,
                 y: content_area.y,
                 width: content_area.width,
-                height: content_area.height - 1,
+                height: content_area.height,
             },
         );
         frame.render_widget(
