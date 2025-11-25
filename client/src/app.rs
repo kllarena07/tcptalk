@@ -179,13 +179,10 @@ impl App {
                         if let Some(colon_pos) = message.find(':') {
                             let author = message[..colon_pos].trim().to_string();
                             let content = message[colon_pos + 1..].trim().to_string();
-                            self.messages.push(Message { author, content });
+                            self.add_message(author, content);
                         } else {
                             // System message (join/leave notifications)
-                            self.messages.push(Message {
-                                author: "System".to_string(),
-                                content: message,
-                            });
+                            self.add_message("System".to_string(), message);
                         }
                         self.should_auto_scroll = true;
                     }
@@ -501,46 +498,27 @@ impl App {
                     let message = format!("{}\n", self.input_text);
 
                     // Add message to local UI immediately for better UX
-                    self.messages.push(Message {
-                        author: self.username.clone(),
-                        content: message_content.clone(),
-                    });
+                    self.add_message(self.username.clone(), message_content.clone());
                     self.should_auto_scroll = true;
 
                     // Send to server in background
-                    match self.write_stream.lock() {
-                        Ok(mut stream) => {
-                            match stream.write_all(message.as_bytes()) {
-                                Ok(_) => {
-                                    match stream.flush() {
-                                        Ok(_) => {
-                                            // Message sent successfully
-                                        }
-                                        Err(e) => {
-                                            self.messages.push(Message {
-                                                author: "System".to_string(),
-                                                content: format!("Failed to send message: {}", e),
-                                            });
-                                            self.should_auto_scroll = true;
-                                        }
-                                    }
-                                }
-                                Err(e) => {
-                                    self.messages.push(Message {
-                                        author: "System".to_string(),
-                                        content: format!("Failed to write to server: {}", e),
-                                    });
-                                    self.should_auto_scroll = true;
-                                }
-                            }
+                    let send_result = {
+                        let lock_result = self.write_stream.lock();
+                        match lock_result {
+                            Ok(mut stream) => match stream.write_all(message.as_bytes()) {
+                                Ok(_) => match stream.flush() {
+                                    Ok(_) => Ok(()),
+                                    Err(e) => Err(format!("Failed to send message: {}", e)),
+                                },
+                                Err(e) => Err(format!("Failed to write to server: {}", e)),
+                            },
+                            Err(e) => Err(format!("Failed to lock stream: {}", e)),
                         }
-                        Err(e) => {
-                            self.messages.push(Message {
-                                author: "System".to_string(),
-                                content: format!("Failed to lock stream: {}", e),
-                            });
-                            self.should_auto_scroll = true;
-                        }
+                    };
+
+                    if let Err(error_msg) = send_result {
+                        self.add_message("System".to_string(), error_msg);
+                        self.should_auto_scroll = true;
                     }
 
                     // Clear input field and reset cursor
