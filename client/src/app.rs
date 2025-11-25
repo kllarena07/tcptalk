@@ -390,32 +390,32 @@ impl App {
     fn handle_key_event(&mut self, key_event: crossterm::event::KeyEvent) -> io::Result<()> {
         match key_event.code {
             KeyCode::Char(c) => {
-                // Handle Ctrl+C for quit
-                if c == 'c' && key_event.modifiers.contains(KeyModifiers::CONTROL) {
+                let ctrl_c_quit = c == 'c' && key_event.modifiers.contains(KeyModifiers::CONTROL);
+                let win_del = c == 'u' && key_event.modifiers.contains(KeyModifiers::CONTROL);
+                let ctrl_lft = c == 'a' && key_event.modifiers.contains(KeyModifiers::CONTROL);
+                let ctrl_rht = c == 'e' && key_event.modifiers.contains(KeyModifiers::CONTROL);
+                let alt_lft = c == 'f' && key_event.modifiers.contains(KeyModifiers::ALT);
+                let alt_rht = c == 'b' && key_event.modifiers.contains(KeyModifiers::ALT);
+
+                if ctrl_c_quit {
                     self.running = false;
                     return Ok(());
-                }
-                // Handle Ctrl+U for clear line (Win+Delete in your case)
-                if c == 'u' && key_event.modifiers.contains(KeyModifiers::CONTROL) {
-                    // Delete everything before cursor
+                } else if win_del {
                     self.input_text.drain(0..self.cursor_position);
                     self.cursor_position = 0;
-                }
-                // Handle Ctrl+Left (a) and Ctrl+Right (e) for line navigation
-                else if c == 'a' && key_event.modifiers.contains(KeyModifiers::CONTROL) {
+                } else if ctrl_lft {
                     self.move_cursor_to_start();
-                } else if c == 'e' && key_event.modifiers.contains(KeyModifiers::CONTROL) {
+                } else if ctrl_rht {
                     self.move_cursor_to_end();
-                }
-                // Handle Alt+Left (f) and Alt+Right (b) for word navigation
-                else if c == 'f' && key_event.modifiers.contains(KeyModifiers::ALT) {
+                } else if alt_lft {
                     self.move_cursor_word_right();
-                } else if c == 'b' && key_event.modifiers.contains(KeyModifiers::ALT) {
+                } else if alt_rht {
                     self.move_cursor_word_left();
                 } else {
                     self.input_text.insert(self.cursor_position, c);
                     self.cursor_position += 1;
                 }
+
                 self.last_input_time = std::time::Instant::now();
             }
             KeyCode::Backspace => {
