@@ -1,11 +1,11 @@
 use crate::input_widget::InputWidget;
 use crossterm::event::{KeyCode, MouseEvent, MouseEventKind};
 use ratatui::{
-    DefaultTerminal, Frame,
     layout::{Constraint, Layout, Rect},
     style::{Color, Style, Stylize},
     text::{Line, Span},
     widgets::{Block, Padding, Paragraph, Wrap},
+    DefaultTerminal, Frame,
 };
 
 pub struct Message {
@@ -16,7 +16,7 @@ pub struct Message {
 use std::{
     io::{self, Write},
     net::TcpStream,
-    sync::{Arc, Mutex, mpsc},
+    sync::{mpsc, Arc, Mutex},
 };
 
 pub struct App {
@@ -132,7 +132,7 @@ impl App {
                 .areas(input_parent);
 
         let version_control = Line::from(Span::styled(
-            " tailtalk v0.0.1 ",
+            " tcptalk v0.0.1 ",
             Style::default().fg(TEXT_PRIMARY),
         ))
         .centered()
@@ -190,7 +190,11 @@ impl App {
                         0
                     } else {
                         // First message: 1 line, others: 2 lines (message + spacing)
-                        if i == 0 { 1 } else { 2 }
+                        if i == 0 {
+                            1
+                        } else {
+                            2
+                        }
                     }
                 })
                 .sum::<usize>();
