@@ -44,7 +44,7 @@ fn broadcast_message(
     Ok(())
 }
 
-fn get_username(mut stream: &TcpStream) -> io::Result<String> {
+fn get_username(mut stream: &TcpStream, connections: &Arc<Mutex<HashMap<SocketAddr, Client>>>) -> io::Result<String> {
     loop {
         stream.write_all(b"Enter your username: ")?;
         stream.flush()?;
@@ -54,12 +54,29 @@ fn get_username(mut stream: &TcpStream) -> io::Result<String> {
 
         let username = String::from_utf8_lossy(&buf[..n]).trim().to_string();
 
-        if !username.is_empty() {
-            return Ok(username);
+        if username.is_empty() {
+            stream.write_all(b"Username cannot be empty. Please try again.\n")?;
+            stream.flush()?;
+            continue;
         }
 
-        stream.write_all(b"Username cannot be empty. Please try again.\n")?;
-        stream.flush()?;
+        if username.eq_ignore_ascii_case("System") {
+            stream.write_all(b"Username 'System' is reserved. Please choose another.\n")?;
+            stream.flush()?;
+            continue;
+        }
+
+        let conn_map = connections.lock().unwrap();
+        let username_taken = conn_map.values().any(|client| client.username.eq_ignore_ascii_case(&username));
+        drop(conn_map);
+
+        if username_taken {
+            stream.write_all(b"Username is already taken. Please choose another.\n")?;
+            stream.flush()?;
+            continue;
+        }
+
+        return Ok(username);
     }
 }
 
@@ -69,7 +86,7 @@ fn handle_client(
 ) -> io::Result<()> {
     let addr = stream.peer_addr()?;
 
-    let username = get_username(&stream)?;
+    let username = get_username(&stream, &connections)?;
 
     let mut conn_map = connections.lock().unwrap();
     conn_map.insert(

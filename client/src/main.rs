@@ -54,11 +54,13 @@ fn main() -> io::Result<()> {
             break;
         }
         let response = String::from_utf8_lossy(&buf[..n]);
-        if response.contains("Username cannot be empty") {
-            eprintln!("Server rejected username");
+        if response.contains("Username cannot be empty") 
+            || response.contains("Username 'System' is reserved")
+            || response.contains("Username is already taken") {
+            eprintln!("Server rejected username: {}", response.trim());
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "Username rejected by server",
+                response.trim(),
             ));
         }
         initial_messages.push(response.to_string());
