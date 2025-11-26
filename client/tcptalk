@@ -1,0 +1,54 @@
+#!/bin/bash
+
+# tcptalk - Bash script to run the TCP chat client
+# Usage: tcptalk [username] [ip_address] [-p port]
+
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Parse arguments
+USERNAME="$1"
+IP="$2"
+PORT="2133"
+
+# Check if username is provided
+if [ -z "$USERNAME" ]; then
+    echo "Usage: tcptalk [username] [ip_address] [-p port]"
+    echo "Example: tcptalk alice 127.0.0.1"
+    echo "Example: tcptalk alice 192.168.1.100 -p 9090"
+    exit 1
+fi
+
+# Set default IP if not provided
+if [ -z "$IP" ]; then
+    IP="0.0.0.0"
+fi
+
+# Parse optional port flag
+shift 2
+while [ $# -gt 0 ]; do
+    case $1 in
+        -p)
+            PORT="$2"
+            shift 2
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Usage: tcptalk [username] [ip_address] [-p port]"
+            exit 1
+            ;;
+    esac
+done
+
+# Path to the binary
+BINARY_PATH="$SCRIPT_DIR/target/debug/tcptalk-client"
+
+# Check if binary exists, if not build it
+if [ ! -f "$BINARY_PATH" ]; then
+    echo "Binary not found. Building..."
+    cd "$SCRIPT_DIR"
+    cargo build
+fi
+
+# Run the binary
+"$BINARY_PATH" "$USERNAME" "$IP" -p "$PORT"

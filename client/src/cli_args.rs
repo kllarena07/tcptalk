@@ -4,9 +4,12 @@ use clap::Parser;
 #[command(name = "tailtalk")]
 #[command(about = "A TUI chat client")]
 pub struct Args {
-    #[arg(short, long)]
+    #[arg(index = 1)]
     pub username: String,
 
-    #[arg(short, long, default_value = "127.0.0.1")]
+    #[arg(index = 2, default_value = "0.0.0.0")]
     pub ip: String,
+
+    #[arg(short = 'p', long, default_value = "2133")]
+    pub port: u16,
 }
