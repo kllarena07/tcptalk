@@ -273,7 +273,7 @@ impl InputWidget {
                     .border_type(BorderType::Thick)
                     .padding(Padding {
                         left: 1,
-                        right: 0,
+                        right: 3,
                         top: 0,
                         bottom: 0,
                     }),
