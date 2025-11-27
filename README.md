@@ -15,6 +15,8 @@ This repository is a small little experiment that decides to expand on this netc
 
 https://github.com/user-attachments/assets/34b2399a-606d-4d51-9d3d-206ffa279c5a
 
+Note: this repository is not built on top of `netcat`
+
 ## Setup
 **A Couple Things to Note**
 - Rust must be must be installed on your machine. You can can find out how to do that [here](https://rust-lang.org/tools/install/).
